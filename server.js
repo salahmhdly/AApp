@@ -9,6 +9,10 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
+// Root and health endpoints for Render
+app.get('/', (req, res) => res.json({ status: 'ok', service: 'AApp' }));
+app.get('/health', (req, res) => res.sendStatus(200));
+
 // --- Helper Functions ---
 const dataDir = path.join(__dirname);
 
@@ -185,4 +189,125 @@ app.post('/signup', async (req, res) => {
     if (!username || !password) return res.status(400).json({ error: 'Missing username or password' });
 
     const users = await readCollection('users');
-   
+    if (users.some(u => u.username == username))
+      return res.status(400).json({ error: 'Username already exists' });
+
+    const user = {
+      ...rest,
+      username,
+      password, // plain for demo, hash in real apps
+      id: generateId(),
+      createdAt: new Date().toISOString(),
+      approvalStatus: 'pending',
+      isBlocked: false,
+      followers: [],
+      following: [],
+    };
+    users.push(user);
+    await writeCollection('users', users);
+    res.status(201).json(user);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// Login
+app.post('/login', async (req, res) => {
+  try {
+    const { username, password } = req.body;
+    const users = await readCollection('users');
+    const user = users.find(u => u.username == username && u.password == password);
+    if (!user) return res.status(401).json({ error: 'Invalid credentials' });
+    res.json(user);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// Submit Report
+app.post('/reports', async (req, res) => {
+  try {
+    const reports = await readCollection('reports');
+    const report = {
+      ...req.body,
+      id: generateId(),
+      createdAt: new Date().toISOString(),
+      status: 'new',
+    };
+    reports.push(report);
+    await writeCollection('reports', reports);
+    res.status(201).json(report);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// --- Admin Logic ---
+
+// Approve/Reject Ad
+app.patch('/ads/:id/approval', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+    const ads = await readCollection('ads');
+    const idx = ads.findIndex(a => a.id == id);
+    if (idx === -1) return res.status(404).json({ error: 'Ad not found' });
+    ads[idx].status = status;
+    await writeCollection('ads', ads);
+    res.json(ads[idx]);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// Approve/Reject User Account
+app.patch('/users/:id/approval', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { approvalStatus } = req.body;
+    const users = await readCollection('users');
+    const idx = users.findIndex(u => u.id == id);
+    if (idx === -1) return res.status(404).json({ error: 'User not found' });
+    users[idx].approvalStatus = approvalStatus;
+    await writeCollection('users', users);
+    res.json(users[idx]);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// Block/Unblock User
+app.patch('/users/:id/block', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { isBlocked } = req.body;
+    const users = await readCollection('users');
+    const idx = users.findIndex(u => u.id == id);
+    if (idx === -1) return res.status(404).json({ error: 'User not found' });
+    users[idx].isBlocked = isBlocked;
+    await writeCollection('users', users);
+    res.json(users[idx]);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// Resolve Report
+app.patch('/reports/:id/resolve', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const reports = await readCollection('reports');
+    const idx = reports.findIndex(r => r.id == id);
+    if (idx === -1) return res.status(404).json({ error: 'Report not found' });
+    reports[idx].status = 'resolved';
+    await writeCollection('reports', reports);
+    res.json(reports[idx]);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// --- Start Server ---
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
