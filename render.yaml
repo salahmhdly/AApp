@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: aapp-server
+    env: node
+    repo: https://github.com/salahmhdly/AApp
+    branch: main
+    buildCommand: npm install
+    startCommand: npm start
+    plan: starter
